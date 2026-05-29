@@ -10,16 +10,19 @@ concurrency:
   group: rossmann-watcher
   cancel-in-progress: false
 
+permissions:
+  contents: write # damit der Job sich state.json zurueckschreiben darf
+
 jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Install dependencies + Chromium
         run: |
@@ -31,3 +34,15 @@ jobs:
           PUSHOVER_USER: ${{ secrets.PUSHOVER_USER }}
           PUSHOVER_TOKEN: ${{ secrets.PUSHOVER_TOKEN }}
         run: node check.mjs
+
+      - name: Persist state
+        run: |
+          if [ -n "$(git status --porcelain state.json)" ]; then
+            git config user.name "rossmann-watcher"
+            git config user.email "rossmann-watcher@users.noreply.github.com"
+            git add state.json
+            git commit -m "state: update [skip ci]"
+            git push
+          else
+            echo "Kein State-Wechsel - kein Commit."
+          fi
