@@ -1,9 +1,14 @@
 // Rossmann-Verfuegbarkeits-Watcher
 // Prueft per Headless-Browser die Filial-Verfuegbarkeit eines Produkts und
-// schickt eine Pushover-Notification, sobald irgendwo Bestand > 0 ist.
+// schickt Pushover-Notifications nach folgender Regel:
+//   - Sobald irgendwo Bestand > 0 ist: bis zu 3x melden (alle 15 Min), dann Ruhe.
+//   - Wenn danach wieder ausverkauft: EINE "wieder ausverkauft"-Meldung.
+//   - Kommt erneut Ware: der 3er-Zyklus startet von vorn.
+// Der Melde-Zustand wird in state.json zwischen den Laeufen gemerkt.
 
 import { chromium } from 'playwright';
 import https from 'node:https';
+import fs from 'node:fs';
 
 // --- Was wird ueberwacht -----------------------------------------------------
 const DAN = '084175'; // Rossmann-Artikelnummer der Pokemon TCG Mini Tin
@@ -15,21 +20,34 @@ const PRODUCT_URL =
 // decken wir einen groesseren Umkreis ab.
 const SEED_PLZ = ['01454', '01067', '01307', '01445', '01900'];
 
+const MAX_NOTIFY = 3; // wie oft pro Verfuegbarkeits-Phase melden
+const STATE_FILE = 'state.json';
+
 const PUSHOVER_USER = process.env.PUSHOVER_USER;
 const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
+
+// --- State laden / speichern -------------------------------------------------
+function loadState() {
+  try {
+    return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+  } catch {
+    return { inStock: false, notifyCount: 0 };
+  }
+}
+
+function saveState(state) {
+  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2) + '\n');
+}
 
 // --- Pushover ----------------------------------------------------------------
 function sendPushover({ title, message, url }) {
   return new Promise((resolve, reject) => {
-    const body = new URLSearchParams({
-      token: PUSHOVER_TOKEN,
-      user: PUSHOVER_USER,
-      title,
-      message,
-      url,
-      url_title: 'Zur Produktseite',
-      priority: '1', // hohe Prioritaet -> kommt sicher durch
-    }).toString();
+    const fields = { token: PUSHOVER_TOKEN, user: PUSHOVER_USER, title, message, priority: '1' };
+    if (url) {
+      fields.url = url;
+      fields.url_title = 'Zur Produktseite';
+    }
+    const body = new URLSearchParams(fields).toString();
 
     const req = https.request(
       'https://api.pushover.net/1/messages.json',
@@ -133,24 +151,56 @@ async function main() {
     );
   }
 
+  // Schutz: keine Daten = Bot-Schutz/Netzproblem. NICHT als "ausverkauft"
+  // werten, sonst gibt es Fehlalarme. State unveraendert lassen.
   if (all.length === 0) {
     console.error('Warnung: keine Filialdaten erhalten (Challenge nicht geloest?).');
-    process.exit(1); // sichtbar machen, falls der Bot-Schutz dauerhaft blockt
+    process.exit(1);
   }
 
+  // --- Melde-Logik mit Gedaechtnis -------------------------------------------
+  const prev = loadState();
+  const next = { inStock: prev.inStock, notifyCount: prev.notifyCount };
+
   if (inStock.length > 0) {
-    const lines = inStock
-      .map((s) => `- ${s.city}, ${s.street} (${s.stock} Stk)`)
-      .join('\n');
-    await sendPushover({
-      title: 'Pokemon Mini Tin verfuegbar!',
-      message: `Bestand bei Rossmann:\n${lines}`,
-      url: PRODUCT_URL,
-    });
-    console.log('Pushover gesendet.');
+    // Neue Verfuegbarkeits-Phase? -> Zaehler zuruecksetzen
+    if (!prev.inStock) {
+      next.notifyCount = 0;
+      console.log('Neue Verfuegbarkeits-Phase erkannt.');
+    }
+    next.inStock = true;
+
+    if (next.notifyCount < MAX_NOTIFY) {
+      next.notifyCount += 1;
+      const lines = inStock.map((s) => `- ${s.city}, ${s.street} (${s.stock} Stk)`).join('\n');
+      await sendPushover({
+        title: `Pokemon Mini Tin verfuegbar! (${next.notifyCount}/${MAX_NOTIFY})`,
+        message: `Bestand bei Rossmann:\n${lines}`,
+        url: PRODUCT_URL,
+      });
+      console.log(`Verfuegbar-Push gesendet (${next.notifyCount}/${MAX_NOTIFY}).`);
+    } else {
+      console.log(`Bereits ${MAX_NOTIFY}x gemeldet - keine weitere Push.`);
+    }
   } else {
-    console.log('Kein Bestand - keine Notification.');
+    // Nichts verfuegbar
+    if (prev.inStock) {
+      // Uebergang verfuegbar -> ausverkauft: einmal Bescheid geben
+      await sendPushover({
+        title: 'Wieder ausverkauft',
+        message: 'Die Pokemon Mini Tin ist in den ueberwachten Filialen nicht mehr verfuegbar.',
+        url: PRODUCT_URL,
+      });
+      console.log('Ausverkauft-Push gesendet.');
+    } else {
+      console.log('Kein Bestand - keine Notification.');
+    }
+    next.inStock = false;
+    next.notifyCount = 0;
   }
+
+  saveState(next);
+  console.log(`State: ${JSON.stringify(next)}`);
 }
 
 main().catch((e) => {
