@@ -1,27 +1,33 @@
-{
-  "permissions": {
-    "allow": [
-      "WebSearch",
-      "Read(//c/Users/sm/Desktop/claude-code/privat/**)",
-      "Bash(git *)",
-      "Bash(npm install:*)",
-      "Bash(npm run *)",
-      "Bash(npm test *)",
-      "Bash(npx *)",
-      "Bash(node *)",
-      "Bash(node -c *)",
-      "Bash(curl *)",
-      "mcp__playwright__browser_navigate",
-      "mcp__playwright__browser_snapshot",
-      "mcp__playwright__browser_click",
-      "mcp__playwright__browser_type",
-      "mcp__playwright__browser_evaluate",
-      "mcp__playwright__browser_network_requests",
-      "mcp__playwright__browser_network_request",
-      "mcp__playwright__browser_take_screenshot",
-      "mcp__playwright__browser_wait_for",
-      "mcp__playwright__browser_close"
-    ]
-  },
-  "enableAllProjectMcpServers": true
-}
+name: Rossmann Watcher
+
+on:
+  schedule:
+    - cron: '*/15 * * * *' # alle 15 Minuten (GitHub kann leicht verzoegern)
+  workflow_dispatch: {} # manueller Start per Knopf moeglich
+
+# Verhindert, dass sich ueberlappende Laeufe stapeln
+concurrency:
+  group: rossmann-watcher
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies + Chromium
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Run availability check
+        env:
+          PUSHOVER_USER: ${{ secrets.PUSHOVER_USER }}
+          PUSHOVER_TOKEN: ${{ secrets.PUSHOVER_TOKEN }}
+        run: node check.mjs
