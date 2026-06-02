@@ -42,7 +42,7 @@ jobs:
             git config user.email "rossmann-watcher@users.noreply.github.com"
             git add state.json
             git commit -m "state: update [skip ci]"
-            git push
+            git push origin HEAD:main
           else
             echo "Kein State-Wechsel - kein Commit."
           fi

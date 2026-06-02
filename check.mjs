@@ -1,10 +1,14 @@
 // Rossmann-Verfuegbarkeits-Watcher
 // Prueft per Headless-Browser die Filial-Verfuegbarkeit eines Produkts und
 // schickt Pushover-Notifications nach folgender Regel:
-//   - Sobald irgendwo Bestand > 0 ist: bis zu 3x melden (alle 15 Min), dann Ruhe.
-//   - Wenn danach wieder ausverkauft: EINE "wieder ausverkauft"-Meldung.
-//   - Kommt erneut Ware: der 3er-Zyklus startet von vorn.
-// Der Melde-Zustand wird in state.json zwischen den Laeufen gemerkt.
+//   - Pro Filiale wird der zuletzt gesehene Bestand gemerkt (state.json).
+//   - Springt eine Filiale von 0 auf >0 (frisch verfuegbar), gibt es EINEN Push.
+//   - Bleibt sie verfuegbar, ist Ruhe. Faellt sie auf 0 und kommt spaeter wieder
+//     Ware, loest derselbe 0->>0-Sprung erneut aus.
+//   - Liefert die Seite gar keine Daten (Bot-Schutz/Netz), gibt es genau EINE
+//     "Watcher down"-Meldung, danach Ruhe bis er sich wieder faengt.
+// So bleibt der Alarm pro Markt scharf, statt nach 3 globalen Pushes zu
+// verstummen, solange irgendwo im Umkreis noch Restbestand liegt.
 
 import { chromium } from 'playwright';
 import https from 'node:https';
@@ -20,18 +24,19 @@ const PRODUCT_URL =
 // decken wir einen groesseren Umkreis ab.
 const SEED_PLZ = ['01454', '01067', '01307', '01445', '01900'];
 
-const MAX_NOTIFY = 3; // wie oft pro Verfuegbarkeits-Phase melden
 const STATE_FILE = 'state.json';
 
 const PUSHOVER_USER = process.env.PUSHOVER_USER;
 const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
 
 // --- State laden / speichern -------------------------------------------------
+// Schema: { stores: { "<filialId>": { city, street, stock } }, down: bool }
 function loadState() {
   try {
-    return JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    const s = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    return { stores: s.stores && typeof s.stores === 'object' ? s.stores : {}, down: !!s.down };
   } catch {
-    return { inStock: false, notifyCount: 0 };
+    return { stores: {}, down: false };
   }
 }
 
@@ -40,9 +45,9 @@ function saveState(state) {
 }
 
 // --- Pushover ----------------------------------------------------------------
-function sendPushover({ title, message, url }) {
+function sendPushover({ title, message, url, priority = '1' }) {
   return new Promise((resolve, reject) => {
-    const fields = { token: PUSHOVER_TOKEN, user: PUSHOVER_USER, title, message, priority: '1' };
+    const fields = { token: PUSHOVER_TOKEN, user: PUSHOVER_USER, title, message, priority };
     if (url) {
       fields.url = url;
       fields.url_title = 'Zur Produktseite';
@@ -131,6 +136,7 @@ async function main() {
       const info = (s.productInfo || []).find((p) => p.dan === DAN);
       const stock = info ? parseInt(info.stock, 10) || 0 : 0;
       stores.set(s.id, {
+        id: s.id,
         city: s.city,
         postcode: s.postcode,
         street: s.street,
@@ -151,56 +157,62 @@ async function main() {
     );
   }
 
+  const state = loadState();
+
   // Schutz: keine Daten = Bot-Schutz/Netzproblem. NICHT als "ausverkauft"
-  // werten, sonst gibt es Fehlalarme. State unveraendert lassen.
+  // werten (sonst Fehlalarme). Stattdessen EINE Down-Meldung, Filial-State
+  // unveraendert lassen.
   if (all.length === 0) {
     console.error('Warnung: keine Filialdaten erhalten (Challenge nicht geloest?).');
+    if (!state.down) {
+      try {
+        await sendPushover({
+          title: 'Rossmann-Watcher: keine Daten',
+          message:
+            'Der Watcher bekommt gerade keine Filialdaten (Bot-Schutz oder Netzproblem). ' +
+            'Verfuegbarkeit kann aktuell nicht geprueft werden.',
+          priority: '0',
+        });
+        console.log('Down-Push gesendet.');
+      } catch (e) {
+        console.error('Down-Push fehlgeschlagen:', e.message);
+      }
+    } else {
+      console.log('War schon down - keine weitere Down-Meldung.');
+    }
+    saveState({ stores: state.stores, down: true });
     process.exit(1);
   }
 
-  // --- Melde-Logik mit Gedaechtnis -------------------------------------------
-  const prev = loadState();
-  const next = { inStock: prev.inStock, notifyCount: prev.notifyCount };
+  // --- Melde-Logik pro Filiale -----------------------------------------------
+  const prevStores = state.stores;
+  const nextStores = {};
+  const newlyAvailable = [];
 
-  if (inStock.length > 0) {
-    // Neue Verfuegbarkeits-Phase? -> Zaehler zuruecksetzen
-    if (!prev.inStock) {
-      next.notifyCount = 0;
-      console.log('Neue Verfuegbarkeits-Phase erkannt.');
+  for (const s of all) {
+    const prevStock = prevStores[s.id]?.stock ?? 0;
+    if (prevStock === 0 && s.stock > 0) {
+      newlyAvailable.push(s);
     }
-    next.inStock = true;
-
-    if (next.notifyCount < MAX_NOTIFY) {
-      next.notifyCount += 1;
-      const lines = inStock.map((s) => `- ${s.city}, ${s.street} (${s.stock} Stk)`).join('\n');
-      await sendPushover({
-        title: `Pokemon Mini Tin verfuegbar! (${next.notifyCount}/${MAX_NOTIFY})`,
-        message: `Bestand bei Rossmann:\n${lines}`,
-        url: PRODUCT_URL,
-      });
-      console.log(`Verfuegbar-Push gesendet (${next.notifyCount}/${MAX_NOTIFY}).`);
-    } else {
-      console.log(`Bereits ${MAX_NOTIFY}x gemeldet - keine weitere Push.`);
-    }
-  } else {
-    // Nichts verfuegbar
-    if (prev.inStock) {
-      // Uebergang verfuegbar -> ausverkauft: einmal Bescheid geben
-      await sendPushover({
-        title: 'Wieder ausverkauft',
-        message: 'Die Pokemon Mini Tin ist in den ueberwachten Filialen nicht mehr verfuegbar.',
-        url: PRODUCT_URL,
-      });
-      console.log('Ausverkauft-Push gesendet.');
-    } else {
-      console.log('Kein Bestand - keine Notification.');
-    }
-    next.inStock = false;
-    next.notifyCount = 0;
+    nextStores[s.id] = { city: s.city, street: s.street, stock: s.stock };
   }
 
-  saveState(next);
-  console.log(`State: ${JSON.stringify(next)}`);
+  if (newlyAvailable.length > 0) {
+    const lines = newlyAvailable
+      .map((s) => `- ${s.city}, ${s.street} (${s.stock} Stk)`)
+      .join('\n');
+    const title =
+      newlyAvailable.length === 1
+        ? `Pokemon Mini Tin: ${newlyAvailable[0].city} jetzt verfuegbar!`
+        : `Pokemon Mini Tin: ${newlyAvailable.length} Filialen jetzt verfuegbar!`;
+    await sendPushover({ title, message: `Frisch verfuegbar:\n${lines}`, url: PRODUCT_URL });
+    console.log(`Verfuegbar-Push gesendet (${newlyAvailable.length} neue Filiale[n]).`);
+  } else {
+    console.log('Keine neu verfuegbaren Filialen - keine Notification.');
+  }
+
+  saveState({ stores: nextStores, down: false });
+  console.log(`State gespeichert: ${Object.keys(nextStores).length} Filialen, down=false`);
 }
 
 main().catch((e) => {
