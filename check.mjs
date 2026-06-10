@@ -106,10 +106,16 @@ function sendPushover({ title, message, url, priority = '1' }) {
 }
 
 // --- Storefinder pro Produkt abfragen ----------------------------------------
-// Liefert eine Map filialId -> { id, city, postcode, street, stock } fuer EIN
-// Produkt, ueber alle Seed-PLZ dedupliziert.
+// Liefert { stores, okCount } fuer EIN Produkt:
+//   stores  = Map filialId -> { id, city, postcode, street, stock }, ueber alle
+//             Seed-PLZ dedupliziert
+//   okCount = Anzahl Seed-PLZ, die valide JSON lieferten. okCount === 0 heisst
+//             "fuer dieses Produkt gar keine Daten" (Bot-Schutz/Netz) und ist
+//             klar von "valide Antwort, aber 0 Stueck" zu unterscheiden -> der
+//             Aufrufer darf bei okCount === 0 NICHT auf ausverkauft schliessen.
 async function fetchStoresForProduct(page, dan) {
   const stores = new Map();
+  let okCount = 0;
   for (const plz of SEED_PLZ) {
     const result = await page.evaluate(
       async ({ dan, plz }) => {
@@ -137,13 +143,16 @@ async function fetchStoresForProduct(page, dan) {
       );
       continue;
     }
+    okCount++;
     for (const s of result.data.store) {
-      const info = (s.productInfo || []).find((p) => p.dan === dan);
+      // tolerant vergleichen: API liefert dan mal als String mit fuehrender
+      // Null ("084175"), mal evtl. als Number -> ueber String() angleichen.
+      const info = (s.productInfo || []).find((p) => String(p.dan) === String(dan));
       const stock = info ? parseInt(info.stock, 10) || 0 : 0;
       stores.set(s.id, { id: s.id, city: s.city, postcode: s.postcode, street: s.street, stock });
     }
   }
-  return stores;
+  return { stores, okCount };
 }
 
 // --- Hauptlauf ---------------------------------------------------------------
@@ -175,8 +184,8 @@ async function main() {
   // Pro Produkt die Filialen einsammeln.
   const perProduct = [];
   for (const product of PRODUCTS) {
-    const stores = await fetchStoresForProduct(page, product.dan);
-    perProduct.push({ product, all: [...stores.values()] });
+    const { stores, okCount } = await fetchStoresForProduct(page, product.dan);
+    perProduct.push({ product, all: [...stores.values()], okCount });
   }
 
   await browser.close();
@@ -192,12 +201,13 @@ async function main() {
   }
 
   const state = loadState();
-  const totalStores = perProduct.reduce((n, p) => n + p.all.length, 0);
+  const allFailed = perProduct.every((p) => p.okCount === 0);
 
   // Schutz: gar keine Daten ueber ALLE Produkte = Bot-Schutz/Netzproblem. NICHT
   // als "ausverkauft" werten (sonst Fehlalarme). Stattdessen EINE Down-Meldung,
-  // Filial-State unveraendert lassen.
-  if (totalStores === 0) {
+  // Filial-State unveraendert lassen. Teil-Ausfaelle (ein Produkt liefert, eins
+  // nicht) werden weiter unten pro Produkt abgefangen.
+  if (allFailed) {
     console.error('Warnung: keine Filialdaten erhalten (Challenge nicht geloest?).');
     if (!state.down) {
       try {
@@ -222,28 +232,48 @@ async function main() {
   // --- Melde-Logik pro Produkt + Filiale -------------------------------------
   const nextProducts = {};
 
-  for (const { product, all } of perProduct) {
+  for (const { product, all, okCount } of perProduct) {
     const prevStores = state.products[product.dan] || {};
+
+    // Teil-Ausfall: dieses Produkt lieferte keine valide Antwort. Alten Stand
+    // unveraendert halten (nicht auf {} ueberschreiben), sonst entsteht beim
+    // Wiederauftauchen ein Fehlalarm-Schwall. Kein Push.
+    if (okCount === 0) {
+      nextProducts[product.dan] = prevStores;
+      console.log(`[${product.name}] Keine Daten (Ausfall) - State unveraendert gehalten.`);
+      continue;
+    }
+
     const nextStores = {};
     const newlyAvailable = [];
-
     for (const s of all) {
       const prevStock = prevStores[s.id]?.stock ?? 0;
       if (prevStock === 0 && s.stock > 0) newlyAvailable.push(s);
       nextStores[s.id] = { city: s.city, street: s.street, stock: s.stock };
     }
-    nextProducts[product.dan] = nextStores;
 
-    if (newlyAvailable.length > 0) {
-      const lines = newlyAvailable.map((s) => `- ${s.city}, ${s.street} (${s.stock} Stk)`).join('\n');
-      const title =
-        newlyAvailable.length === 1
-          ? `${product.name}: ${newlyAvailable[0].city} jetzt verfuegbar!`
-          : `${product.name}: ${newlyAvailable.length} Filialen jetzt verfuegbar!`;
-      await sendPushover({ title, message: `Frisch verfuegbar:\n${lines}`, url: product.url });
-      console.log(`[${product.name}] Verfuegbar-Push gesendet (${newlyAvailable.length} neue Filiale[n]).`);
-    } else {
+    if (newlyAvailable.length === 0) {
+      nextProducts[product.dan] = nextStores;
       console.log(`[${product.name}] Keine neu verfuegbaren Filialen - keine Notification.`);
+      continue;
+    }
+
+    const lines = newlyAvailable.map((s) => `- ${s.city}, ${s.street} (${s.stock} Stk)`).join('\n');
+    const title =
+      newlyAvailable.length === 1
+        ? `${product.name}: ${newlyAvailable[0].city} jetzt verfuegbar!`
+        : `${product.name}: ${newlyAvailable.length} Filialen jetzt verfuegbar!`;
+    try {
+      await sendPushover({ title, message: `Frisch verfuegbar:\n${lines}`, url: product.url });
+      // Erst nach erfolgreichem Push den neuen Stand uebernehmen.
+      nextProducts[product.dan] = nextStores;
+      console.log(`[${product.name}] Verfuegbar-Push gesendet (${newlyAvailable.length} neue Filiale[n]).`);
+    } catch (e) {
+      // Push fehlgeschlagen: alten Stand halten, damit nur DIESES Produkt im
+      // naechsten Lauf erneut gemeldet wird und bereits erfolgreiche Produkte
+      // nicht doppelt pushen.
+      nextProducts[product.dan] = prevStores;
+      console.error(`[${product.name}] Push fehlgeschlagen, State gehalten:`, e.message);
     }
   }
 
