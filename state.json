@@ -1,114 +1,228 @@
 {
-  "stores": {
-    "464": {
-      "city": "Dresden",
-      "street": "Hauptstr. 10",
-      "stock": 0
+  "products": {
+    "516372": {
+      "464": {
+        "city": "Dresden",
+        "street": "Hauptstr. 10",
+        "stock": 0
+      },
+      "487": {
+        "city": "Dresden",
+        "street": "Borsbergstr. 31",
+        "stock": 0
+      },
+      "520": {
+        "city": "Dresden",
+        "street": "Merianplatz 4",
+        "stock": 0
+      },
+      "601": {
+        "city": "Dresden",
+        "street": "Österreicher Str. 33",
+        "stock": 0
+      },
+      "840": {
+        "city": "Dresden",
+        "street": "Riesaer Str. 5",
+        "stock": 0
+      },
+      "1944": {
+        "city": "Dresden",
+        "street": "Boltenhagener Str. 71",
+        "stock": 0
+      },
+      "2230": {
+        "city": "Dresden",
+        "street": "Peschelstr. 33",
+        "stock": 0
+      },
+      "2424": {
+        "city": "Dresden",
+        "street": "Kesselsdorfer Str. 8",
+        "stock": 0
+      },
+      "2540": {
+        "city": "Dresden",
+        "street": "Wiener Platz 4",
+        "stock": 0
+      },
+      "2652": {
+        "city": "Radeberg",
+        "street": "Hauptstr. 8",
+        "stock": 0
+      },
+      "2666": {
+        "city": "Dresden",
+        "street": "Bulgakowstr. 5",
+        "stock": 0
+      },
+      "2775": {
+        "city": "Dresden",
+        "street": "Schlesischer Platz 1",
+        "stock": 0
+      },
+      "2966": {
+        "city": "Dresden",
+        "street": "Antonstr. 2 a",
+        "stock": 0
+      },
+      "3530": {
+        "city": "Dresden",
+        "street": "Gerokstr. 11",
+        "stock": 0
+      },
+      "3532": {
+        "city": "Dresden",
+        "street": "Harthaer Str. 3",
+        "stock": 0
+      },
+      "3580": {
+        "city": "Bischofswerda",
+        "street": "Bautzener Str. 2",
+        "stock": 0
+      },
+      "3597": {
+        "city": "Bernsdorf",
+        "street": "Am Ankerglasplatz 6 b",
+        "stock": 0
+      },
+      "3601": {
+        "city": "Dresden",
+        "street": "Hüblerstr. 8",
+        "stock": 0
+      },
+      "3709": {
+        "city": "Großröhrsdorf",
+        "street": "Pulsnitzer Str. 4c",
+        "stock": 0
+      },
+      "3849": {
+        "city": "Radebeul",
+        "street": "Hauptstr. 31 a",
+        "stock": 0
+      },
+      "3859": {
+        "city": "Radebeul",
+        "street": "Meißner Str. 283",
+        "stock": 0
+      },
+      "3884": {
+        "city": "Dresden",
+        "street": "Webergasse 1",
+        "stock": 0
+      }
     },
-    "487": {
-      "city": "Dresden",
-      "street": "Borsbergstr. 31",
-      "stock": 0
-    },
-    "520": {
-      "city": "Dresden",
-      "street": "Merianplatz 4",
-      "stock": 0
-    },
-    "601": {
-      "city": "Dresden",
-      "street": "Österreicher Str. 33",
-      "stock": 0
-    },
-    "840": {
-      "city": "Dresden",
-      "street": "Riesaer Str. 5",
-      "stock": 0
-    },
-    "1944": {
-      "city": "Dresden",
-      "street": "Boltenhagener Str. 71",
-      "stock": 0
-    },
-    "2230": {
-      "city": "Dresden",
-      "street": "Peschelstr. 33",
-      "stock": 0
-    },
-    "2424": {
-      "city": "Dresden",
-      "street": "Kesselsdorfer Str. 8",
-      "stock": 0
-    },
-    "2540": {
-      "city": "Dresden",
-      "street": "Wiener Platz 4",
-      "stock": 0
-    },
-    "2652": {
-      "city": "Radeberg",
-      "street": "Hauptstr. 8",
-      "stock": 0
-    },
-    "2666": {
-      "city": "Dresden",
-      "street": "Bulgakowstr. 5",
-      "stock": 0
-    },
-    "2775": {
-      "city": "Dresden",
-      "street": "Schlesischer Platz 1",
-      "stock": 0
-    },
-    "2966": {
-      "city": "Dresden",
-      "street": "Antonstr. 2 a",
-      "stock": 0
-    },
-    "3530": {
-      "city": "Dresden",
-      "street": "Gerokstr. 11",
-      "stock": 0
-    },
-    "3532": {
-      "city": "Dresden",
-      "street": "Harthaer Str. 3",
-      "stock": 0
-    },
-    "3580": {
-      "city": "Bischofswerda",
-      "street": "Bautzener Str. 2",
-      "stock": 0
-    },
-    "3597": {
-      "city": "Bernsdorf",
-      "street": "Am Ankerglasplatz 6 b",
-      "stock": 0
-    },
-    "3601": {
-      "city": "Dresden",
-      "street": "Hüblerstr. 8",
-      "stock": 0
-    },
-    "3709": {
-      "city": "Großröhrsdorf",
-      "street": "Pulsnitzer Str. 4c",
-      "stock": 0
-    },
-    "3849": {
-      "city": "Radebeul",
-      "street": "Hauptstr. 31 a",
-      "stock": 0
-    },
-    "3859": {
-      "city": "Radebeul",
-      "street": "Meißner Str. 283",
-      "stock": 0
-    },
-    "3884": {
-      "city": "Dresden",
-      "street": "Webergasse 1",
-      "stock": 0
+    "084175": {
+      "464": {
+        "city": "Dresden",
+        "street": "Hauptstr. 10",
+        "stock": 0
+      },
+      "487": {
+        "city": "Dresden",
+        "street": "Borsbergstr. 31",
+        "stock": 0
+      },
+      "520": {
+        "city": "Dresden",
+        "street": "Merianplatz 4",
+        "stock": 0
+      },
+      "601": {
+        "city": "Dresden",
+        "street": "Österreicher Str. 33",
+        "stock": 0
+      },
+      "840": {
+        "city": "Dresden",
+        "street": "Riesaer Str. 5",
+        "stock": 0
+      },
+      "1944": {
+        "city": "Dresden",
+        "street": "Boltenhagener Str. 71",
+        "stock": 0
+      },
+      "2230": {
+        "city": "Dresden",
+        "street": "Peschelstr. 33",
+        "stock": 0
+      },
+      "2424": {
+        "city": "Dresden",
+        "street": "Kesselsdorfer Str. 8",
+        "stock": 0
+      },
+      "2540": {
+        "city": "Dresden",
+        "street": "Wiener Platz 4",
+        "stock": 0
+      },
+      "2652": {
+        "city": "Radeberg",
+        "street": "Hauptstr. 8",
+        "stock": 0
+      },
+      "2666": {
+        "city": "Dresden",
+        "street": "Bulgakowstr. 5",
+        "stock": 0
+      },
+      "2775": {
+        "city": "Dresden",
+        "street": "Schlesischer Platz 1",
+        "stock": 0
+      },
+      "2966": {
+        "city": "Dresden",
+        "street": "Antonstr. 2 a",
+        "stock": 0
+      },
+      "3530": {
+        "city": "Dresden",
+        "street": "Gerokstr. 11",
+        "stock": 0
+      },
+      "3532": {
+        "city": "Dresden",
+        "street": "Harthaer Str. 3",
+        "stock": 0
+      },
+      "3580": {
+        "city": "Bischofswerda",
+        "street": "Bautzener Str. 2",
+        "stock": 0
+      },
+      "3597": {
+        "city": "Bernsdorf",
+        "street": "Am Ankerglasplatz 6 b",
+        "stock": 0
+      },
+      "3601": {
+        "city": "Dresden",
+        "street": "Hüblerstr. 8",
+        "stock": 0
+      },
+      "3709": {
+        "city": "Großröhrsdorf",
+        "street": "Pulsnitzer Str. 4c",
+        "stock": 0
+      },
+      "3849": {
+        "city": "Radebeul",
+        "street": "Hauptstr. 31 a",
+        "stock": 0
+      },
+      "3859": {
+        "city": "Radebeul",
+        "street": "Meißner Str. 283",
+        "stock": 0
+      },
+      "3884": {
+        "city": "Dresden",
+        "street": "Webergasse 1",
+        "stock": 0
+      }
     }
   },
   "down": false
