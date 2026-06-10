@@ -22,7 +22,7 @@ const PRODUCT_URL =
 // Startpunkte fuer die Filialsuche (Raum Radeberg/Dresden). Pro PLZ liefert
 // Rossmann die naechstgelegenen Maerkte; ueber mehrere PLZ + Dedup nach Filial-ID
 // decken wir einen groesseren Umkreis ab.
-const SEED_PLZ = ['01454', '01067', '01307', '01445', '01900'];
+const SEED_PLZ = ['01454', '01067', '01307', '01445', '01900', '02994'];
 
 const STATE_FILE = 'state.json';
 
