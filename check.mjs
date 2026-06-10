@@ -1,13 +1,14 @@
 // Rossmann-Verfuegbarkeits-Watcher
-// Prueft per Headless-Browser die Filial-Verfuegbarkeit eines Produkts und
+// Prueft per Headless-Browser die Filial-Verfuegbarkeit MEHRERER Produkte und
 // schickt Pushover-Notifications nach folgender Regel:
-//   - Pro Filiale wird der zuletzt gesehene Bestand gemerkt (state.json).
+//   - Pro Produkt UND Filiale wird der zuletzt gesehene Bestand gemerkt
+//     (state.json, nach DAN verschachtelt).
 //   - Springt eine Filiale von 0 auf >0 (frisch verfuegbar), gibt es EINEN Push.
 //   - Bleibt sie verfuegbar, ist Ruhe. Faellt sie auf 0 und kommt spaeter wieder
 //     Ware, loest derselbe 0->>0-Sprung erneut aus.
 //   - Liefert die Seite gar keine Daten (Bot-Schutz/Netz), gibt es genau EINE
 //     "Watcher down"-Meldung, danach Ruhe bis er sich wieder faengt.
-// So bleibt der Alarm pro Markt scharf, statt nach 3 globalen Pushes zu
+// So bleibt der Alarm pro Produkt+Markt scharf, statt nach 3 globalen Pushes zu
 // verstummen, solange irgendwo im Umkreis noch Restbestand liegt.
 
 import { chromium } from 'playwright';
@@ -15,13 +16,27 @@ import https from 'node:https';
 import fs from 'node:fs';
 
 // --- Was wird ueberwacht -----------------------------------------------------
-const DAN = '084175'; // Rossmann-Artikelnummer der Pokemon TCG Mini Tin
-const PRODUCT_URL =
-  'https://www.rossmann.de/de/ideenwelt-amigo-pokemon-tcg-mini-tin/p/4007396203073';
+// dan  = Rossmann-Artikelnummer (steht im Netzwerk-Call
+//        storefinder/.rest/store?dan=...; auf der Produktseite per Klick auf
+//        "Filiale finden" sichtbar)
+// url  = Produktseiten-Link (fuer den Push-Button "Zur Produktseite")
+// name = kurzer Anzeigename fuer die Notification
+const PRODUCTS = [
+  {
+    dan: '084175',
+    name: 'Pokemon Mini Tin',
+    url: 'https://www.rossmann.de/de/ideenwelt-amigo-pokemon-tcg-mini-tin/p/4007396203073',
+  },
+  {
+    dan: '516372',
+    name: 'Pokemon Booster Nr. 1',
+    url: 'https://www.rossmann.de/de/baby-und-spielzeug-amigo-pokemon-booster-nr-1/p/0820650250170',
+  },
+];
 
-// Startpunkte fuer die Filialsuche (Raum Radeberg/Dresden). Pro PLZ liefert
-// Rossmann die naechstgelegenen Maerkte; ueber mehrere PLZ + Dedup nach Filial-ID
-// decken wir einen groesseren Umkreis ab.
+// Startpunkte fuer die Filialsuche (Raum Radeberg/Dresden + Bernsdorf). Pro PLZ
+// liefert Rossmann die naechstgelegenen Maerkte; ueber mehrere PLZ + Dedup nach
+// Filial-ID decken wir einen groesseren Umkreis ab.
 const SEED_PLZ = ['01454', '01067', '01307', '01445', '01900', '02994'];
 
 const STATE_FILE = 'state.json';
@@ -30,13 +45,24 @@ const PUSHOVER_USER = process.env.PUSHOVER_USER;
 const PUSHOVER_TOKEN = process.env.PUSHOVER_TOKEN;
 
 // --- State laden / speichern -------------------------------------------------
-// Schema: { stores: { "<filialId>": { city, street, stock } }, down: bool }
+// Schema: { products: { "<dan>": { "<filialId>": { city, street, stock } } }, down: bool }
+// Migration: altes flaches Schema { stores: {...}, down } wird dem ersten Produkt
+// (Mini Tin, dan 084175) zugeordnet, damit dessen Pro-Filial-Gedaechtnis erhalten
+// bleibt und kein Fehlalarm-Schwall entsteht.
+const LEGACY_DAN = '084175';
+
 function loadState() {
   try {
     const s = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
-    return { stores: s.stores && typeof s.stores === 'object' ? s.stores : {}, down: !!s.down };
+    if (s.stores && !s.products) {
+      return { products: { [LEGACY_DAN]: s.stores }, down: !!s.down };
+    }
+    return {
+      products: s.products && typeof s.products === 'object' ? s.products : {},
+      down: !!s.down,
+    };
   } catch {
-    return { stores: {}, down: false };
+    return { products: {}, down: false };
   }
 }
 
@@ -79,33 +105,10 @@ function sendPushover({ title, message, url, priority = '1' }) {
   });
 }
 
-// --- Hauptlauf ---------------------------------------------------------------
-async function main() {
-  if (!PUSHOVER_USER || !PUSHOVER_TOKEN) {
-    console.error('FEHLER: PUSHOVER_USER / PUSHOVER_TOKEN nicht gesetzt.');
-    process.exit(1);
-  }
-
-  const browser = await chromium.launch({ headless: true });
-  const ctx = await browser.newContext({
-    userAgent:
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
-      '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    locale: 'de-DE',
-  });
-  const page = await ctx.newPage();
-
-  // Produktseite laden -> der Bot-Schutz (Fastly-Challenge) wird vom echten
-  // Browser automatisch geloest und die Seite laedt sich danach neu.
-  await page.goto(PRODUCT_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
-  for (let i = 0; i < 20; i++) {
-    const title = await page.title();
-    if (!/challenge/i.test(title)) break;
-    await page.waitForTimeout(1500);
-  }
-
-  // Storefinder pro Seed-PLZ abfragen (im Seitenkontext -> traegt die Cookies,
-  // die die Challenge gesetzt hat).
+// --- Storefinder pro Produkt abfragen ----------------------------------------
+// Liefert eine Map filialId -> { id, city, postcode, street, stock } fuer EIN
+// Produkt, ueber alle Seed-PLZ dedupliziert.
+async function fetchStoresForProduct(page, dan) {
   const stores = new Map();
   for (const plz of SEED_PLZ) {
     const result = await page.evaluate(
@@ -125,44 +128,76 @@ async function main() {
           return { ok: false, snippet: String(e) };
         }
       },
-      { dan: DAN, plz }
+      { dan, plz }
     );
 
     if (!result.ok || !result.data || !Array.isArray(result.data.store)) {
-      console.error(`PLZ ${plz}: keine JSON-Antwort (${result.snippet || 'kein store-Array'})`);
+      console.error(
+        `[${dan}] PLZ ${plz}: keine JSON-Antwort (${result.snippet || 'kein store-Array'})`
+      );
       continue;
     }
     for (const s of result.data.store) {
-      const info = (s.productInfo || []).find((p) => p.dan === DAN);
+      const info = (s.productInfo || []).find((p) => p.dan === dan);
       const stock = info ? parseInt(info.stock, 10) || 0 : 0;
-      stores.set(s.id, {
-        id: s.id,
-        city: s.city,
-        postcode: s.postcode,
-        street: s.street,
-        stock,
-      });
+      stores.set(s.id, { id: s.id, city: s.city, postcode: s.postcode, street: s.street, stock });
     }
+  }
+  return stores;
+}
+
+// --- Hauptlauf ---------------------------------------------------------------
+async function main() {
+  if (!PUSHOVER_USER || !PUSHOVER_TOKEN) {
+    console.error('FEHLER: PUSHOVER_USER / PUSHOVER_TOKEN nicht gesetzt.');
+    process.exit(1);
+  }
+
+  const browser = await chromium.launch({ headless: true });
+  const ctx = await browser.newContext({
+    userAgent:
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+      '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    locale: 'de-DE',
+  });
+  const page = await ctx.newPage();
+
+  // Irgendeine Produktseite laden -> der Bot-Schutz (Fastly-Challenge) wird vom
+  // echten Browser geloest und setzt die Cookies, die der Storefinder-Call dann
+  // im Seitenkontext mittraegt. Eine Challenge-Loesung gilt fuer alle Produkte.
+  await page.goto(PRODUCTS[0].url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  for (let i = 0; i < 20; i++) {
+    const title = await page.title();
+    if (!/challenge/i.test(title)) break;
+    await page.waitForTimeout(1500);
+  }
+
+  // Pro Produkt die Filialen einsammeln.
+  const perProduct = [];
+  for (const product of PRODUCTS) {
+    const stores = await fetchStoresForProduct(page, product.dan);
+    perProduct.push({ product, all: [...stores.values()] });
   }
 
   await browser.close();
 
-  const all = [...stores.values()];
-  const inStock = all.filter((s) => s.stock > 0);
-
-  console.log(`Geprueft: ${all.length} Filialen, mit Bestand: ${inStock.length}`);
-  for (const s of all) {
-    console.log(
-      `  ${s.stock > 0 ? '[x]' : '[ ]'} ${s.postcode} ${s.city}, ${s.street}: stock=${s.stock}`
-    );
+  for (const { product, all } of perProduct) {
+    const inStock = all.filter((s) => s.stock > 0);
+    console.log(`\n[${product.name}] Geprueft: ${all.length} Filialen, mit Bestand: ${inStock.length}`);
+    for (const s of all) {
+      console.log(
+        `  ${s.stock > 0 ? '[x]' : '[ ]'} ${s.postcode} ${s.city}, ${s.street}: stock=${s.stock}`
+      );
+    }
   }
 
   const state = loadState();
+  const totalStores = perProduct.reduce((n, p) => n + p.all.length, 0);
 
-  // Schutz: keine Daten = Bot-Schutz/Netzproblem. NICHT als "ausverkauft"
-  // werten (sonst Fehlalarme). Stattdessen EINE Down-Meldung, Filial-State
-  // unveraendert lassen.
-  if (all.length === 0) {
+  // Schutz: gar keine Daten ueber ALLE Produkte = Bot-Schutz/Netzproblem. NICHT
+  // als "ausverkauft" werten (sonst Fehlalarme). Stattdessen EINE Down-Meldung,
+  // Filial-State unveraendert lassen.
+  if (totalStores === 0) {
     console.error('Warnung: keine Filialdaten erhalten (Challenge nicht geloest?).');
     if (!state.down) {
       try {
@@ -180,39 +215,40 @@ async function main() {
     } else {
       console.log('War schon down - keine weitere Down-Meldung.');
     }
-    saveState({ stores: state.stores, down: true });
+    saveState({ products: state.products, down: true });
     process.exit(1);
   }
 
-  // --- Melde-Logik pro Filiale -----------------------------------------------
-  const prevStores = state.stores;
-  const nextStores = {};
-  const newlyAvailable = [];
+  // --- Melde-Logik pro Produkt + Filiale -------------------------------------
+  const nextProducts = {};
 
-  for (const s of all) {
-    const prevStock = prevStores[s.id]?.stock ?? 0;
-    if (prevStock === 0 && s.stock > 0) {
-      newlyAvailable.push(s);
+  for (const { product, all } of perProduct) {
+    const prevStores = state.products[product.dan] || {};
+    const nextStores = {};
+    const newlyAvailable = [];
+
+    for (const s of all) {
+      const prevStock = prevStores[s.id]?.stock ?? 0;
+      if (prevStock === 0 && s.stock > 0) newlyAvailable.push(s);
+      nextStores[s.id] = { city: s.city, street: s.street, stock: s.stock };
     }
-    nextStores[s.id] = { city: s.city, street: s.street, stock: s.stock };
+    nextProducts[product.dan] = nextStores;
+
+    if (newlyAvailable.length > 0) {
+      const lines = newlyAvailable.map((s) => `- ${s.city}, ${s.street} (${s.stock} Stk)`).join('\n');
+      const title =
+        newlyAvailable.length === 1
+          ? `${product.name}: ${newlyAvailable[0].city} jetzt verfuegbar!`
+          : `${product.name}: ${newlyAvailable.length} Filialen jetzt verfuegbar!`;
+      await sendPushover({ title, message: `Frisch verfuegbar:\n${lines}`, url: product.url });
+      console.log(`[${product.name}] Verfuegbar-Push gesendet (${newlyAvailable.length} neue Filiale[n]).`);
+    } else {
+      console.log(`[${product.name}] Keine neu verfuegbaren Filialen - keine Notification.`);
+    }
   }
 
-  if (newlyAvailable.length > 0) {
-    const lines = newlyAvailable
-      .map((s) => `- ${s.city}, ${s.street} (${s.stock} Stk)`)
-      .join('\n');
-    const title =
-      newlyAvailable.length === 1
-        ? `Pokemon Mini Tin: ${newlyAvailable[0].city} jetzt verfuegbar!`
-        : `Pokemon Mini Tin: ${newlyAvailable.length} Filialen jetzt verfuegbar!`;
-    await sendPushover({ title, message: `Frisch verfuegbar:\n${lines}`, url: PRODUCT_URL });
-    console.log(`Verfuegbar-Push gesendet (${newlyAvailable.length} neue Filiale[n]).`);
-  } else {
-    console.log('Keine neu verfuegbaren Filialen - keine Notification.');
-  }
-
-  saveState({ stores: nextStores, down: false });
-  console.log(`State gespeichert: ${Object.keys(nextStores).length} Filialen, down=false`);
+  saveState({ products: nextProducts, down: false });
+  console.log(`\nState gespeichert: ${PRODUCTS.length} Produkte, down=false`);
 }
 
 main().catch((e) => {

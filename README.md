@@ -1,8 +1,9 @@
 # Rossmann Watcher
 
-Prueft alle 15 Minuten per GitHub Actions, ob eine Pokemon TCG Mini Tin in
-Rossmann-Filialen im Raum Radeberg/Dresden vorraetig ist, und schickt bei
-Bestand eine Pushover-Notification aufs Handy.
+Prueft alle 15 Minuten per GitHub Actions, ob bestimmte Pokemon-Produkte in
+Rossmann-Filialen im Raum Radeberg/Dresden (inkl. Bernsdorf) vorraetig sind, und
+schickt bei Bestand eine Pushover-Notification aufs Handy. Mehrere Produkte
+parallel moeglich (siehe `PRODUCTS` in `check.mjs`).
 
 ## Einrichtung (einmalig)
 
@@ -16,8 +17,11 @@ Bestand eine Pushover-Notification aufs Handy.
 
 ## Was anpassen, wenn ein anderes Produkt ueberwacht werden soll
 
-In `check.mjs` oben:
+In `check.mjs` oben im `PRODUCTS`-Array pro Produkt ein Objekt ergaenzen:
 
-- `DAN` = Rossmann-Artikelnummer (steht im Netzwerk-Call `storefinder/.rest/store?dan=...`)
-- `PRODUCT_URL` = Produktseiten-Link
-- `SEED_PLZ` = Liste der Start-PLZ fuer die Umkreissuche
+- `dan` = Rossmann-Artikelnummer. Auf der Produktseite auf "Filiale finden"
+  klicken, im Netzwerk-Tab den Call `storefinder/.rest/store?dan=...` ablesen.
+- `url` = Produktseiten-Link (Button "Zur Produktseite" im Push)
+- `name` = kurzer Anzeigename fuer die Notification
+
+`SEED_PLZ` = Liste der Start-PLZ fuer die Umkreissuche (gilt fuer alle Produkte).
