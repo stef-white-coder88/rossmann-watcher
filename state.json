@@ -49,7 +49,7 @@
       "2652": {
         "city": "Radeberg",
         "street": "Hauptstr. 8",
-        "stock": 0
+        "stock": 5
       },
       "2666": {
         "city": "Dresden",
@@ -74,12 +74,12 @@
       "3532": {
         "city": "Dresden",
         "street": "Harthaer Str. 3",
-        "stock": 5
+        "stock": 2
       },
       "3580": {
         "city": "Bischofswerda",
         "street": "Bautzener Str. 2",
-        "stock": 5
+        "stock": 3
       },
       "3597": {
         "city": "Bernsdorf",
@@ -126,7 +126,7 @@
       "520": {
         "city": "Dresden",
         "street": "Merianplatz 4",
-        "stock": 1
+        "stock": 0
       },
       "601": {
         "city": "Dresden",
@@ -161,7 +161,7 @@
       "2652": {
         "city": "Radeberg",
         "street": "Hauptstr. 8",
-        "stock": 0
+        "stock": 5
       },
       "2666": {
         "city": "Dresden",
@@ -186,7 +186,7 @@
       "3532": {
         "city": "Dresden",
         "street": "Harthaer Str. 3",
-        "stock": 2
+        "stock": 1
       },
       "3580": {
         "city": "Bischofswerda",
