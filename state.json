@@ -14,7 +14,7 @@
       "520": {
         "city": "Dresden",
         "street": "Merianplatz 4",
-        "stock": 0
+        "stock": 5
       },
       "601": {
         "city": "Dresden",
@@ -74,12 +74,12 @@
       "3532": {
         "city": "Dresden",
         "street": "Harthaer Str. 3",
-        "stock": 0
+        "stock": 5
       },
       "3580": {
         "city": "Bischofswerda",
         "street": "Bautzener Str. 2",
-        "stock": 0
+        "stock": 5
       },
       "3597": {
         "city": "Bernsdorf",
@@ -89,7 +89,7 @@
       "3601": {
         "city": "Dresden",
         "street": "Hüblerstr. 8",
-        "stock": 0
+        "stock": 5
       },
       "3709": {
         "city": "Großröhrsdorf",
@@ -126,7 +126,7 @@
       "520": {
         "city": "Dresden",
         "street": "Merianplatz 4",
-        "stock": 0
+        "stock": 1
       },
       "601": {
         "city": "Dresden",
@@ -176,7 +176,7 @@
       "2966": {
         "city": "Dresden",
         "street": "Antonstr. 2 a",
-        "stock": 0
+        "stock": 1
       },
       "3530": {
         "city": "Dresden",
@@ -186,7 +186,7 @@
       "3532": {
         "city": "Dresden",
         "street": "Harthaer Str. 3",
-        "stock": 0
+        "stock": 2
       },
       "3580": {
         "city": "Bischofswerda",
