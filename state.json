@@ -36,6 +36,11 @@
         "street": "Peschelstr. 33",
         "stock": 0
       },
+      "2334": {
+        "city": "Kamenz",
+        "street": "Markt 14",
+        "stock": 5
+      },
       "2424": {
         "city": "Dresden",
         "street": "Kesselsdorfer Str. 8",
@@ -146,6 +151,11 @@
       "2230": {
         "city": "Dresden",
         "street": "Peschelstr. 33",
+        "stock": 0
+      },
+      "2334": {
+        "city": "Kamenz",
+        "street": "Markt 14",
         "stock": 0
       },
       "2424": {
